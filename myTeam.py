@@ -22,7 +22,7 @@ import game
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DummyAgent', second = 'DummyAgent'):
+               first = 'DynamicAgent', second = 'DynamicAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -45,7 +45,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-class DummyAgent(CaptureAgent):
+class DynamicAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
   You should look at baselineTeam.py for more details about how to
@@ -76,7 +76,29 @@ class DummyAgent(CaptureAgent):
     '''
     Your initialization code goes here, if you need any.
     '''
+    self.start = gameState.getAgentPosition(self.index)
 
+
+  # you can check if the opponent's agent is a pacman even when it is not close to our agents (but we don't know the exact position of their agents)
+  def closestOppPacman(self, gameState):
+    oppPacman = []
+
+    for oppIndex in self.getOpponents(gameState):
+      oppPosition = gameState.getAgentState(oppIndex).getPosition()
+      if gameState.getAgentState(oppIndex).isPacman and oppPosition != None:
+        oppPacman.append([oppIndex, oppPosition])
+
+    return oppPacman
+
+
+  def getClosestFoodDistance(self, gameState):
+    # cannot declare a global food variable since the food position can be changed
+    food = self.getFood(gameState).asList()
+    minFoodDistance = float('inf')
+    for foodPos in food:
+      foodDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), foodPos)
+      minFoodDistance = min(minFoodDistance, foodDistance)
+    return minFoodDistance
 
   def chooseAction(self, gameState):
     """
@@ -85,8 +107,32 @@ class DummyAgent(CaptureAgent):
     actions = gameState.getLegalActions(self.index)
 
     '''
-    You should change this in your own agent.
-    '''
+    Find nearest food distance (called foodDistance)
+    Check if the opponent's agent is a pacman and we can get its position
+      -> Yes, calculate chaseDistance using mazeDistance
+        -> If chaseDistance * 2 < foodDistance -> iterate through actions to get the suitable one (??? how to check)
+      -> Else, go to the nearest food
+    ''' 
+    closestFoodDistance = self.getClosestFoodDistance(gameState)
+    oppPacmans = self.checkForOppPacman(gameState)
+
+    if len(oppPacmans) > 0:
+      minChaseDistance = float('inf')
+      for [oppIndex, oppPosition] in oppPacmans:
+        chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
+        minChaseDistance = min(minChaseDistance, chaseDistance)
+
+      
+      # chase the opponent
+      if minChaseDistance * 2 < closestFoodDistance:
+        for action in actions:
+          successor = self.getSuccessor(gameState, action)
+          if self.getMazeDistance(successor.getAgentState(self.index).getPosition(), oppPosition) < chaseDistance:
+            return action
+          
+
+    # go to the nearest food 
+    # INSERT YOUR GETTING FOOD FUNCTION HERE
 
     return random.choice(actions)
 

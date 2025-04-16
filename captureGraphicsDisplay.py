@@ -417,6 +417,7 @@ class PacmanGraphics:
     for ghostImagePart in ghostImageParts:
       move_by(ghostImagePart, delta, lift=True)
     refresh()
+    sleep(abs(self.frameTime) / 8.0)
 
     if ghost.scaredTimer > 0:
       color = SCARED_COLOR
