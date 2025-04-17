@@ -46,15 +46,24 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
+# key: enemy index
+# value: -1 if the enemy is not chaseable, otherwise the index of the agent that is chasing it
+enemy_marked = {}
+
 class DynamicAgent(CaptureAgent):
 
   def __init__(self, *args, **kwargs):
+
     super().__init__(*args, **kwargs)
     self.data = set()
     self.dictionary = {}
     self.holdingFood = 0
 
+    
+
   def registerInitialState(self, gameState):
+    global enemy_marked
+
     """
     This method handles the initial setup of the
     agent to populate useful fields (such as what team
@@ -80,15 +89,26 @@ class DynamicAgent(CaptureAgent):
     '''
     self.start = gameState.getAgentPosition(self.index)
 
+    if len(enemy_marked) == 0:
+      for oppIndex in self.getOpponents(gameState):
+        enemy_marked[oppIndex] = -1
+
 
   # you can check if the opponent's agent is a pacman even when it is not close to our agents (but we don't know the exact position of their agents)
   def getClosestOppPacman(self, gameState):
+    global enemy_marked
     oppPacman = []
 
     for oppIndex in self.getOpponents(gameState):
       oppPosition = gameState.getAgentState(oppIndex).getPosition()
       if gameState.getAgentState(oppIndex).isPacman and oppPosition != None:
-        oppPacman.append([oppIndex, oppPosition])
+        # only chase an enemy if you are already chasing it or nobody is already chasing it
+        if enemy_marked[oppIndex] == self.index or enemy_marked[oppIndex] == -1:
+          oppPacman.append([oppIndex, oppPosition])
+        
+      else:
+        # unmark the enemy pacman (when they disappear(either by being eaten or going back to their home))
+        enemy_marked[oppIndex] = -1
 
     return oppPacman
   
@@ -147,6 +167,7 @@ class DynamicAgent(CaptureAgent):
           successor = self.getSuccessor(gameState, action)
           succAgentPos = successor.getAgentState(self.index).getPosition()
           if self.getMazeDistance(succAgentPos, oppPosition) < chaseDistance:
+            enemy_marked[oppIndex] = self.index
             return action
           
 
@@ -185,6 +206,7 @@ class DynamicAgent(CaptureAgent):
       walls = gameState.getWalls()
       gridList = walls.asList(key=False)
       #print(gameState.data)
+      # do we have self.red or self.isRed?
       safeSpaces = halfList(l=gridList, grid=walls, red=self.red)
       #print(safeSpaces)
       closest_safe_space=None
