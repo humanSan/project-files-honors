@@ -12,6 +12,7 @@
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
 
+from operator import itemgetter
 from captureAgents import CaptureAgent
 import random, time, util
 from game import Directions
@@ -46,11 +47,12 @@ def createTeam(firstIndex, secondIndex, isRed,
 ##########
 
 class DynamicAgent(CaptureAgent):
-  """
-  A Dummy agent to serve as an example of the necessary agent structure.
-  You should look at baselineTeam.py for more details about how to
-  create an agent as this is the bare minimum.
-  """
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.data = set()
+    self.dictionary = {}
+    self.holdingFood = 0
 
   def registerInitialState(self, gameState):
     """
@@ -80,7 +82,7 @@ class DynamicAgent(CaptureAgent):
 
 
   # you can check if the opponent's agent is a pacman even when it is not close to our agents (but we don't know the exact position of their agents)
-  def closestOppPacman(self, gameState):
+  def getClosestOppPacman(self, gameState):
     oppPacman = []
 
     for oppIndex in self.getOpponents(gameState):
@@ -89,22 +91,36 @@ class DynamicAgent(CaptureAgent):
         oppPacman.append([oppIndex, oppPosition])
 
     return oppPacman
+  
+  def getSuccessor(self, gameState, action):
+    """
+    Finds the next successor which is a grid position (location tuple).
+    """
+    successor = gameState.generateSuccessor(self.index, action)
+    pos = successor.getAgentState(self.index).getPosition()
+    if pos != util.nearestPoint(pos):
+      # Only half a grid position was covered
+      return successor.generateSuccessor(self.index, action)
+    else:
+      return successor
 
 
   def getClosestFoodDistance(self, gameState):
     # cannot declare a global food variable since the food position can be changed
     food = self.getFood(gameState).asList()
     minFoodDistance = float('inf')
+    minFoodPos = None
     for foodPos in food:
       foodDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), foodPos)
-      minFoodDistance = min(minFoodDistance, foodDistance)
-    return minFoodDistance
+      if foodDistance < minFoodDistance:
+        minFoodDistance = foodDistance
+        minFoodPos = foodPos
+    return [minFoodPos, minFoodDistance]
 
   def chooseAction(self, gameState):
-    """
-    Picks among actions randomly.
-    """
+
     actions = gameState.getLegalActions(self.index)
+    agentPos = gameState.getAgentState(self.index).getPosition()
 
     '''
     Find nearest food distance (called foodDistance)
@@ -113,26 +129,87 @@ class DynamicAgent(CaptureAgent):
         -> If chaseDistance * 2 < foodDistance -> iterate through actions to get the suitable one (??? how to check)
       -> Else, go to the nearest food
     ''' 
-    closestFoodDistance = self.getClosestFoodDistance(gameState)
-    oppPacmans = self.checkForOppPacman(gameState)
+    [closestFoodPos, closestFoodDistance] = self.getClosestFoodDistance(gameState)
+    oppPacmans = self.getClosestOppPacman(gameState)
+    
 
     if len(oppPacmans) > 0:
       minChaseDistance = float('inf')
       for [oppIndex, oppPosition] in oppPacmans:
-        chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
+        chaseDistance = self.getMazeDistance(agentPos, oppPosition)
         minChaseDistance = min(minChaseDistance, chaseDistance)
 
       
       # chase the opponent
       if minChaseDistance * 2 < closestFoodDistance:
+        # print("chase")
         for action in actions:
           successor = self.getSuccessor(gameState, action)
-          if self.getMazeDistance(successor.getAgentState(self.index).getPosition(), oppPosition) < chaseDistance:
+          succAgentPos = successor.getAgentState(self.index).getPosition()
+          if self.getMazeDistance(succAgentPos, oppPosition) < chaseDistance:
             return action
           
 
     # go to the nearest food 
     # INSERT YOUR GETTING FOOD FUNCTION HERE
+    
+    for action in actions:
+      successor = self.getSuccessor(gameState, action)
+      if self.getMazeDistance(agentPos, closestFoodPos) < closestFoodDistance:
+        return action
+      
+    currentFood = self.getFood(gameState).asList()
+    # oppGhostPresence = False
+    if(self.holdingFood < 2):
+      minFood = -1
+      minFoodTile = None
+      for foodPos in currentFood:
+        if self.distancer.getDistance(agentPos, foodPos) < minFood or minFood<0:
+          minFood = self.distancer.getDistance(agentPos, foodPos)
+          minFoodTile = foodPos
 
-    return random.choice(actions)
+      #print(actions)
 
+      distances = []
+      for action in actions:
+        successor = self.getSuccessor(gameState, action)
+        successorPos = successor.getAgentPosition(self.index)
+        distances.append((action, self.distancer.getDistance(successorPos, minFoodTile)))
+
+      distances = sorted(distances, key=itemgetter(1))
+
+      if(distances[0][1]==0):
+        self.holdingFood+=1
+      return distances[0][0]
+    else:
+      walls = gameState.getWalls()
+      gridList = walls.asList(key=False)
+      #print(gameState.data)
+      safeSpaces = halfList(l=gridList, grid=walls, red=self.red)
+      #print(safeSpaces)
+      closest_safe_space=None
+      for safe_square in safeSpaces:
+        if closest_safe_space==None or self.distancer.getDistance(agentPos, safe_square) < closest_safe_space[0]:
+          closest_safe_space = (self.distancer.getDistance(agentPos, safe_square), safe_square)
+
+      #print(closest_safe_space)
+      distances = []
+      for action in actions:
+        successor = self.getSuccessor(gameState, action)
+        successorPos = successor.getAgentPosition(self.index)
+        distances.append((action, self.distancer.getDistance(successorPos, closest_safe_space[1])))
+
+      distances = sorted(distances, key=itemgetter(1))
+
+      if(distances[0][1]==0):
+        self.holdingFood-=1
+      return distances[0][0]
+
+
+def halfList(l, grid, red):
+  halfway = grid.width // 2
+  newList = []
+  for x,y in l:
+    if red and x < halfway: newList.append((x,y))
+    elif not red and x >= halfway: newList.append((x,y))
+  return newList
