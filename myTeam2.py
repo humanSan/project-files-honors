@@ -228,7 +228,7 @@ class DynamicAgent(CaptureAgent):
         if(distances[0][1]==0):
           self.holdingFood+=1
         
-        print("chasing Food")
+        # print("chasing Food")
         return distances[0][0]
     
     if(goHome or self.holdingFood):
@@ -243,7 +243,7 @@ class DynamicAgent(CaptureAgent):
           if nextDist < closest_safe[0]:
             if nextDist == 0:
               self.holdingFood=0
-            print("going home, no threat")
+            # print("going home, no threat")
             return action
 
         # distances = sorted(distances, key=itemgetter(1))
@@ -279,7 +279,7 @@ class DynamicAgent(CaptureAgent):
         if best_score[2]==0:
           self.holdingFood=0
           
-        print("going home, avoiding enemy")
+        # print("going home, avoiding enemy")
         return best_score[1]
               
 
@@ -292,6 +292,7 @@ class DynamicAgent(CaptureAgent):
     # go to the nearest food 
     # INSERT YOUR GETTING FOOD FUNCTION HERE
 
+    print("random choice dynamic")
     return random.choice(actions)
   
   def getSuccessor(self, gameState, action):
@@ -316,6 +317,7 @@ class DefenseAgent(CaptureAgent):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.randomDefPos = None
+    self.decay = 0
     
     # MODIFIED class constructor to hold data variables
 
@@ -356,6 +358,19 @@ class DefenseAgent(CaptureAgent):
         oppPacman.append([oppIndex, oppPosition])
 
     return oppPacman
+  
+  def historyOppPacman(self, gameState, histIndex, rangeVal):
+
+    oppPacman = set()
+    for i in range(histIndex, histIndex+rangeVal):
+      if(len(self.observationHistory)>rangeVal):
+        observation = self.observationHistory[-1 - i]
+        for oppIndex in self.getOpponents(gameState):
+          oppPosition = observation.getAgentState(oppIndex).getPosition()
+          if observation.getAgentState(oppIndex).isPacman and oppPosition != None:
+            oppPacman.add((oppIndex, oppPosition))
+
+    return oppPacman
 
 
   def chooseAction(self, gameState):
@@ -363,7 +378,7 @@ class DefenseAgent(CaptureAgent):
     Picks among actions randomly.
     """
     actions = gameState.getLegalActions(self.index)
-
+    self.decay -= 1
     '''
     Find nearest food distance (called foodDistance)
     Check if the opponent's agent is a pacman and we can get its position
@@ -374,6 +389,7 @@ class DefenseAgent(CaptureAgent):
     # closestFoodDistance = self.getClosestFoodDistance(gameState)
     oppPacmans = self.closestOppPacman(gameState)
     agentPos = gameState.getAgentPosition(self.index)
+    grid = gameState.getWalls()
 
     if len(oppPacmans) > 0:
       minChaseDistance = float('inf')
@@ -381,40 +397,79 @@ class DefenseAgent(CaptureAgent):
         chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
         minChaseDistance = min(minChaseDistance, chaseDistance)
 
+      if minChaseDistance==1:
+        self.setRandomDefPos(grid)
+        self.decay = 4
+
+      # print('should be chasing pacman')
       for action in actions:
         successor = self.getSuccessor(gameState, action)
-        if self.getMazeDistance(successor.getAgentState(self.index).getPosition(), oppPosition) < minChaseDistance:
+        successorPos = successor.getAgentState(self.index).getPosition()
+        if self.getMazeDistance(successorPos, oppPosition) < minChaseDistance and self.posIsSafe(grid, successorPos):
+          # print('chasing pacman')
           return action
+        
+    elif histPacmans := self.historyOppPacman(gameState, 0, 3):
+      minChaseDistance = float('inf')
+      for (oppIndex, oppPosition) in histPacmans:
+        chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
+        minChaseDistance = min(minChaseDistance, chaseDistance)
 
-    else:
-      grid = gameState.getWalls()
+      # print('should be chasing pacman')
+      for action in actions:
+        successor = self.getSuccessor(gameState, action)
+        successorPos = successor.getAgentState(self.index).getPosition()
+        if self.getMazeDistance(successorPos, oppPosition) < minChaseDistance and self.posIsSafe(grid, successorPos):
+          # print('chasing pacman')
+          return action
+    
+    # elif opponentPos := [gameState.getAgentPosition(opp) for opp in self.getOpponents(gameState)if gameState.getAgentPosition(opp) is not None]:
+    #   for action in actions:
+    #       successor = self.getSuccessor(gameState, action)
+    #       successorPos = successor.getAgentPosition(self.index)
+    #       if(self.posIsSafe(grid, successorPos)):
+    #         for oppPos in opponentPos:
+    #           distToOpp = self.getMazeDistance(successorPos, oppPos)
+    #           if distToOpp < self.getMazeDistance(agentPos, oppPos):
+    #             return action
       #grid = capture.halfGrid(fullgrid, red=self.red)
 
-      if not self.randomDefPos:
-        self.setRandomDefPos(grid)
+    if not self.randomDefPos:
+      self.setRandomDefPos(grid)
 
-      for action in actions:
-        successor = self.getSuccessor(gameState, action)
-        successorPos = successor.getAgentPosition(self.index)
-        if(successorPos[0] >= grid.width//2):
-          continue
-
+    # print("is in else")
+    acceptableActions = []
+    for action in actions:
+      successor = self.getSuccessor(gameState, action)
+      successorPos = successor.getAgentPosition(self.index)
+      if(self.posIsSafe(grid, successorPos)):
+        acceptableActions.append(action)
         distToRand = self.getMazeDistance(successorPos, self.randomDefPos)
         if distToRand < self.getMazeDistance(agentPos, self.randomDefPos):
           
           if distToRand==0:
             self.setRandomDefPos(grid)
-
+          print('going to rand', self.randomDefPos, successorPos, grid.width)
           return action
+    
+    print("randomDefPos failed, retrying")
+    self.setRandomDefPos(grid)
 
-    return random.choice(actions)
+    print('random choice defense')
+    return random.choice(acceptableActions)
   
+  def posIsSafe(self, grid, pos):
+    if self.red:
+      return pos[0] < grid.width//2
+    else:
+      return pos[0] >= grid.width//2
+
   def setRandomDefPos(self, grid):
     randX = random.randrange(grid.width//2 - 3, grid.width//2)
-    randY = random.randrange(1, grid.height)
+    randY = random.randrange(grid.height//2, grid.height) if not self.randomDefPos or self.randomDefPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
     while grid[randX][randY]:
       randX = random.randrange(grid.width//2 - 3, grid.width//2)
-      randY = random.randrange(1, grid.height)
+      randY = random.randrange(grid.height//2, grid.height) if not self.randomDefPos or self.randomDefPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
     self.randomDefPos=(randX, randY)
 
   def getSuccessor(self, gameState, action):
