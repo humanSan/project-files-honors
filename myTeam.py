@@ -100,6 +100,16 @@ class DynamicAgent(CaptureAgent):
 
     return oppPacman
 
+  def opponents(self, gameState):
+    oppPacman = []
+
+    for oppIndex in self.getOpponents(gameState):
+      oppPosition = gameState.getAgentState(oppIndex).getPosition()
+      if  oppPosition != None:
+        oppPacman.append((oppIndex, oppPosition))
+
+    return oppPacman
+
 
   def getClosestFoodDistance(self, gameState):
     # cannot declare a global food variable since the food position can be changed
@@ -109,6 +119,19 @@ class DynamicAgent(CaptureAgent):
       foodDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), foodPos)
       minFoodDistance = min(minFoodDistance, foodDistance)
     return minFoodDistance
+  
+  def closestSafeSpace(self, gameState, position):
+    walls = gameState.getWalls()
+    gridList = walls.asList(key=False)
+    # print(gameState.data)
+    safeSpaces = halfList(l=gridList, grid=walls, red=self.red)
+    # print(safeSpaces)
+    closest_safe_space=None
+    for safe_square in safeSpaces:
+      if closest_safe_space==None or self.distancer.getDistance(position, safe_square) < closest_safe_space[0]:
+        closest_safe_space = (self.distancer.getDistance(position, safe_square), safe_square)
+  
+    return closest_safe_space
 
   def chooseAction(self, gameState):
     """
@@ -124,21 +147,36 @@ class DynamicAgent(CaptureAgent):
       -> Else, go to the nearest food
     ''' 
     closestFoodDistance = self.getClosestFoodDistance(gameState)
-    # oppPacmans = self.checkForOppPacman(gameState)
+    opps = self.opponents(self.getCurrentObservation())
 
-    # if len(oppPacmans) > 0:
-    #   minChaseDistance = float('inf')
-    #   for [oppIndex, oppPosition] in oppPacmans:
-    #     chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
-    #     minChaseDistance = min(minChaseDistance, chaseDistance)
+    midpoint = gameState.getWalls().width//2
+
+    if(self.red):
+      oppPacmans = [opp for opp in opps if opp[1][0]<midpoint]
+      oppTheirSide = [opp for opp in opps if opp[1][0]>=midpoint]
+    else:
+      oppPacmans = [opp for opp in opps if opp[1][0]>=midpoint]
+      oppTheirSide = [opp for opp in opps if opp[1][0]<midpoint]
+
+    # if(opps):
+    #   print("ourSide:", oppOurSide)
+    #   print("theirSide:", oppTheirSide)
+
+    # 
+
+    if len(oppPacmans) > 0:
+      minChaseDistance = float('inf')
+      for [oppIndex, oppPosition] in oppPacmans:
+        chaseDistance = self.getMazeDistance(gameState.getAgentState(self.index).getPosition(), oppPosition)
+        minChaseDistance = min(minChaseDistance, chaseDistance)
 
       
-    #   # chase the opponent
-    #   if minChaseDistance * 2 < closestFoodDistance:
-    #     for action in actions:
-    #       successor = self.getSuccessor(gameState, action)
-    #       if self.getMazeDistance(successor.getAgentState(self.index).getPosition(), oppPosition) < chaseDistance:
-    #         return action
+      # chase the opponent
+      if minChaseDistance * 2 < closestFoodDistance:
+        for action in actions:
+          successor = self.getSuccessor(gameState, action)
+          if self.getMazeDistance(successor.getAgentState(self.index).getPosition(), oppPosition) < chaseDistance:
+            return action
 
     # TODO Uncomment code above, it wasn't working for me so I commented it out.
           
@@ -154,53 +192,91 @@ class DynamicAgent(CaptureAgent):
     agentPos = gameState.getAgentState(self.index).getPosition()
 
     enemyPresence = False
+    goHome = False
 
     # successor = [(action, self.getSuccessor(gameState, action).getAgentPosition(self.index)) for action in actions]
 
-    if(self.holdingFood < 2):
-      minFood = -1
-      minFoodTile = None
+    if(self.holdingFood < 1):
+      minFoodPos = None
+      minFoodDist = None
       for foodPos in currentFood:
-        if self.distancer.getDistance(agentPos, foodPos) < minFood or minFood<0:
-          minFood = self.distancer.getDistance(agentPos, foodPos)
-          minFoodTile = foodPos
+        foodDist = self.distancer.getDistance(agentPos, foodPos)            
 
-      print(actions)
+        if not minFoodPos or foodDist < minFoodDist:
+          minFoodDist = self.distancer.getDistance(agentPos, foodPos)
+          minFoodPos = foodPos
 
-      distances = []
-      for action in actions:
-        successor = self.getSuccessor(gameState, action)
-        successorPos = successor.getAgentPosition(self.index)
-        distances.append((action, self.distancer.getDistance(successorPos, minFoodTile)))
+      
 
-      distances = sorted(distances, key=itemgetter(1))
+      # print(actions)
+      distFromFoodToHome = self.closestSafeSpace(gameState, minFoodPos)[0]
+      for opp in oppTheirSide:
+          if self.distancer.getDistance(agentPos, opp[1]) < (minFoodDist+distFromFoodToHome)*1.5:
+            goHome = True
 
-      if(distances[0][1]==0):
-        self.holdingFood+=1
-      return distances[0][0]
-    else:
-      walls = gameState.getWalls()
-      gridList = walls.asList(key=False)
-      print(gameState.data)
-      safeSpaces = halfList(l=gridList, grid=walls, red=self.red)
-      print(safeSpaces)
-      closest_safe_space=None
-      for safe_square in safeSpaces:
-        if closest_safe_space==None or self.distancer.getDistance(agentPos, safe_square) < closest_safe_space[0]:
-          closest_safe_space = (self.distancer.getDistance(agentPos, safe_square), safe_square)
+      if not goHome:
+        distances = []
+        for action in actions:
+          successor = self.getSuccessor(gameState, action)
+          successorPos = successor.getAgentPosition(self.index)
+          distances.append((action, self.distancer.getDistance(successorPos, minFoodPos)))
 
-      print(closest_safe_space)
-      distances = []
-      for action in actions:
-        successor = self.getSuccessor(gameState, action)
-        successorPos = successor.getAgentPosition(self.index)
-        distances.append((action, self.distancer.getDistance(successorPos, closest_safe_space[1])))
+        distances = sorted(distances, key=itemgetter(1))
 
-      distances = sorted(distances, key=itemgetter(1))
+        if(distances[0][1]==0):
+          self.holdingFood+=1
+        
+        print("chasing Food")
+        return distances[0][0]
+    
+    if(goHome or self.holdingFood):
 
-      if(distances[0][1]==0):
-        self.holdingFood-=1
-      return distances[0][0]
+      if not oppTheirSide:
+        closest_safe = self.closestSafeSpace(gameState, agentPos)
+        distances = []
+        for action in actions:
+          successor = self.getSuccessor(gameState, action)
+          successorPos = successor.getAgentPosition(self.index)
+          distances.append((action, self.distancer.getDistance(successorPos, closest_safe[1])))
+
+        distances = sorted(distances, key=itemgetter(1))
+
+        if(distances[0][1]==0):
+          self.holdingFood=0
+
+        print("going home, no threat")
+        return distances[0][0]
+
+      else:
+        walls = gameState.getWalls()
+        gridList = walls.asList(key=False)
+        # print(gameState.data)
+        safeSpaces = halfList(l=gridList, grid=walls, red=self.red)
+        # print(safeSpaces)
+        best_score=None
+        for safe_square in safeSpaces:
+          for opp in oppTheirSide:
+            for action in actions:
+              successor = self.getSuccessor(gameState, action)
+              successorPos = successor.getAgentPosition(self.index)
+
+              distToSafe = self.distancer.getDistance(successorPos, safe_square)
+              score = distToSafe - self.distancer.getDistance(successorPos, opp[1])
+
+              if not best_score or score < best_score[0]:
+                best_score = (score, action, distToSafe)
+        
+        if best_score[2]==0:
+          self.holdingFood=0
+          
+        print("going home, avoiding enemy")
+        return best_score[1]
+              
+
+          
+
+      # print(closest_safe_space)
+      
           
 
     # go to the nearest food 
@@ -338,6 +414,6 @@ def halfList(l, grid, red):
   halfway = grid.width // 2
   newList = []
   for x,y in l:
-    if red and x < halfway: newList.append((x,y))
+    if red and x < halfway-1: newList.append((x,y))
     elif not red and x >= halfway: newList.append((x,y))
   return newList
