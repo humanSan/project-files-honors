@@ -197,7 +197,7 @@ class DynamicAgent(CaptureAgent):
   # goToRandom allows for a random restart if there is ghost on the other side and we are in home territory. We don't want to enter near the ghost, so we go to a random space on our side hoping that there will not be a ghost there.
   def goToRandom(self, actions, gameState):
     if self.randomStartPos is None:
-      self.setRandomStartPos(gameState.getWalls())
+      self.setRandomStartPos(gameState.getWalls(), gameState.getAgentPosition(self.index))
 
     for i in range(len(actions)*4):
       for action in actions:
@@ -211,7 +211,7 @@ class DynamicAgent(CaptureAgent):
           print('going to random offense:', self.randomStartPos, agentPos)
           return action
       
-      self.setRandomStartPos(gameState.getWalls())
+      self.setRandomStartPos(gameState.getWalls(), gameState.getAgentPosition(self.index))
     
     acceptableActions = []
     for action in actions:
@@ -487,13 +487,31 @@ class DynamicAgent(CaptureAgent):
     else:
       return successor
     
-  def setRandomStartPos(self, grid):
-    randX = random.randrange(grid.width//2 - 4, grid.width//2-1) if self.red else random.randrange(grid.width//2 + 1, grid.width//2 + 4)
-    randY = random.randrange(grid.height//2, grid.height-1) if (not self.randomStartPos) or self.randomStartPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
-    while grid[randX][randY]:
-      randX = random.randrange(grid.width//2 - 4, grid.width//2-1) if self.red else random.randrange(grid.width//2 + 1, grid.width//2 + 4)
-      randY = random.randrange(grid.height//2, grid.height-1) if (not self.randomStartPos) or self.randomStartPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
-    self.randomStartPos=(randX, randY)
+  def setRandomStartPos(self, grid, agentPos):
+
+    meridian = grid.width//2
+    gridlist = grid.asList(key = False)
+    start = 4
+    end = 1
+    randomPosList = []
+    if self.red:
+      for i in gridlist:
+        if i[0]>=meridian-start and i[0] < meridian-end and abs(i[1]-agentPos[1])>grid.height/4:
+          randomPosList.append(i)
+    else:
+      for i in gridlist:
+        if i[0]>=meridian+end and i[0] < meridian+start and abs(i[1]-agentPos[1])>grid.height/4:
+          randomPosList.append(i)
+    
+    self.randomStartPos = random.choice(randomPosList)
+
+
+    # randX = random.randrange(grid.width//2 - 4, grid.width//2-1) if self.red else random.randrange(grid.width//2 + 1, grid.width//2 + 4)
+    # randY = random.randrange(grid.height//2, grid.height-1) if (not self.randomStartPos) or self.randomStartPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
+    # while grid[randX][randY]:
+    #   randX = random.randrange(grid.width//2 - 4, grid.width//2-1) if self.red else random.randrange(grid.width//2 + 1, grid.width//2 + 4)
+    #   randY = random.randrange(grid.height//2, grid.height-1) if (not self.randomStartPos) or self.randomStartPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
+    # self.randomStartPos=(randX, randY)
 
 class DefenseAgent(CaptureAgent):
   """
@@ -625,7 +643,7 @@ class DefenseAgent(CaptureAgent):
         minChaseDistance = min(minChaseDistance, chaseDistance)
 
       if minChaseDistance==1:
-        self.setRandomDefPos(grid)
+        self.setRandomDefPos(grid, agentPos)
 
       # print('should be chasing pacman')
       for action in actions:
@@ -688,7 +706,7 @@ class DefenseAgent(CaptureAgent):
   
   def goToRandom(self, actions, gameState):
     if not self.randomDefPos:
-      self.setRandomDefPos(gameState.getWalls())
+      self.setRandomDefPos(gameState.getWalls(), gameState.getAgentPosition(self.index))
 
     for action in actions:
       successor = self.getSuccessor(gameState, action)
@@ -703,7 +721,7 @@ class DefenseAgent(CaptureAgent):
         return action
     
     print("randomDefPos failed, retrying")
-    self.setRandomDefPos(gameState.getWalls())
+    self.setRandomDefPos(gameState.getWalls(), agentPos)
 
     acceptableActions = []
     for action in actions:
@@ -724,13 +742,33 @@ class DefenseAgent(CaptureAgent):
     else:
       return pos[0] >= grid.width//2
 
-  def setRandomDefPos(self, grid):
-    randX = random.randrange(grid.width//2 - 3, grid.width//2) if self.red else random.randrange(grid.width//2, grid.width//2 + 3)
-    randY = random.randrange(grid.height//2, grid.height) if (not self.randomDefPos) or self.randomDefPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
-    while grid[randX][randY]:
-      randX = random.randrange(grid.width//2 - 3, grid.width//2) if self.red else random.randrange(grid.width//2, grid.width//2 + 3)
-      randY = random.randrange(grid.height//2, grid.height) if (not self.randomDefPos) or self.randomDefPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
-    self.randomDefPos=(randX, randY)
+  def setRandomDefPos(self, grid, agentPos):
+
+    meridian = grid.width//2
+    gridlist = grid.asList(key = False)
+    start = 3
+    end = 0
+    randomPosList = []
+    if self.red:
+      for i in gridlist:
+        if i[0]>=meridian-start and i[0] < meridian-end and abs(i[1]-agentPos[1])>grid.height/4:
+          randomPosList.append(i)
+    else:
+      for i in gridlist:
+        if i[0]>=meridian+end and i[0] < meridian+start and abs(i[1]-agentPos[1])>grid.height/4:
+          randomPosList.append(i)
+    
+    self.randomDefPos = random.choice(randomPosList)
+
+
+    # randX = random.randrange(grid.width//2 - 3, grid.width//2) if self.red else random.randrange(grid.width//2, grid.width//2 + 3)
+    # randY = random.randrange(grid.height//2, grid.height) if (not self.randomDefPos) or agentPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
+    # while grid[randX][randY]:
+    #   randX = random.randrange(grid.width//2 - 3, grid.width//2) if self.red else random.randrange(grid.width//2, grid.width//2 + 3)
+    #   randY = random.randrange(grid.height//2, grid.height) if (not self.randomDefPos) or agentPos[1]<grid.height//2 else random.randrange(1, grid.height//2)
+    # self.randomDefPos=(randX, randY)
+
+    print("setting random def position", grid.height//2, grid.height)
 
   def getSuccessor(self, gameState, action):
     """
